@@ -317,6 +317,21 @@ function hashPw(p,salt){salt=salt||rnd16();let h=salt+':'+p;for(let i=0;i<2000;i
 function checkPw(p,stored){const i=String(stored||'').indexOf('$');if(i<1)return false;return hashPw(p,stored.slice(0,i))===stored}
 function unameOf(u){return sp(u.username||u.code||'').toLowerCase()}
 function pwOk(u,pw){return u.ph?checkPw(pw,u.ph):nd(pw)===nd(u.code)}
+/* إضافة المستخدمين الأساسيين (مرة واحدة لكل متصفح) */
+try{if(!localStorage.getItem(KEY+'seed4')){
+ const PG=['newcli','clients','invoices'];
+ const upsert=(id,name,code,uname,type,pw,pg)=>{
+  let u=state.users.find(x=>unameOf(x)===uname)||state.users.find(x=>nd(x.code)===nd(code));
+  if(!u){u={_id:id,name:name,code:code,username:uname,type:type,pages:pg||[],acts:[]};state.users.push(u)}
+  else{u.name=u.name||name;u.username=uname;u.type=type==='Admin'?'Admin':u.type}
+  if(pw&&!u.ph){u.ph=hashPw(pw);u.mustChange=false}
+ };
+ upsert('seed10001','دينا عاطف مبارك','10001','dina88','Admin','220288');
+ upsert('seed10002','مرجريت سيف فؤاد','10002','margo87','Admin','160587');
+ for(let i=1;i<=10;i++)upsert('seeduser'+i,'يوزر '+i,String(30000+i),'user'+i,'موظفة','123456',PG);
+ save('users');localStorage.setItem(KEY+'seed4','1');
+}}catch(e){}
+try{if(!localStorage.getItem(KEY+'seed5')){const m=state.users.find(x=>unameOf(x)==='margo87');if(m&&(!m.ph||m.mustChange)){m.ph=hashPw('160587');m.mustChange=false;save('users')}localStorage.setItem(KEY+'seed5','1')}}catch(e){}
 let loginFails=0,loginLock=0;
 function doLogin(){
  const err=$('loginErr'),now=Date.now();
@@ -349,7 +364,7 @@ function pwModal(force){
  $('modal').classList.add('show');
  ui.pwForce=!!force;
 }
-function logout(){me=null;cur='';fillLoginNames();try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}$('app').style.display='none';$('loginScreen').style.display='flex';$('loginUser').value='';loginTypeShow();$('loginPass').value='';ui.pwForce=false;closeModal()}
+function logout(){me=null;ui.usersOk=null;cur='';fillLoginNames();try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}$('app').style.display='none';$('loginScreen').style.display='flex';$('loginUser').value='';loginTypeShow();$('loginPass').value='';ui.pwForce=false;closeModal()}
 function can(a){return !!me&&(me.type==='Admin'||(me.acts||[]).includes(a))}
 function allowed(id){if(!me)return false;if(id==='users')return me.type==='Admin';if(id==='supplies')return me.type==='Admin'||['supplies','accounts','inventory'].some(x=>(me.pages||[]).includes(x));if(id==='invoices')return me.type==='Admin'||['invoices','accounts'].some(x=>(me.pages||[]).includes(x));return me.type==='Admin'||(me.pages||[]).includes(id)}
 
@@ -440,7 +455,7 @@ const subs={
  fuHistory:{ico:'🩺',title:'التاريخ المرضي',color:'#ff70a6',parent:'follow',render:()=>renderTable('medHistory')},
  fuProfile:{ico:'🗃️',title:'ملف العميلة الكامل',color:'#80ed99',parent:'follow',render:()=>vProfile()},
  mgmtMed:{ico:'🩺',title:'متابعة الجلسات والتاريخ المرضي',color:'#b5179e',parent:'users',render:()=>{$('view').innerHTML='<div id="mgmt"></div>';mMed()}},
- mgmtUsers:{ico:'👥',title:'المستخدمين',color:'#ff6b9d',parent:'users',render:()=>{$('view').innerHTML='<div id="mgmt"></div>';mUsers()}},
+ mgmtUsers:{ico:'👥',title:'المستخدمين',color:'#ff6b9d',parent:'users',render:()=>{$('view').innerHTML='<div id="mgmt"></div>';usersGate()}},
  mgmtPerms:{ico:'🔐',title:'صفحات المستخدمين والصلاحيات',color:'#4cc9f0',parent:'users',render:()=>{$('view').innerHTML='<div id="mgmt"></div>';mPerms()}},
  mgmtRecords:{ico:'📁',title:'إدارة السجلات والجلسات',color:'#ffb703',parent:'users',render:()=>{$('view').innerHTML='<div id="mgmt"></div>';mRecords()}},
  mgmtFinance:{ico:'💰',title:'الشئون المالية',color:'#80ed99',parent:'users',render:()=>{$('view').innerHTML='<div id="mgmt"></div>';mFinance()}},
@@ -1129,6 +1144,15 @@ function dlFile(rid){
 
 /* ============ لوحة التحكم (إدارة المستخدمين) ============ */
 /* المستخدمين: عرض - إضافة - تعديل بيانات وصلاحيات - حذف */
+/* بوابة حماية شاشة المستخدمين: إعادة إدخال كلمة مرور الأدمن */
+function usersGate(){
+ if(me&&ui.usersOk===me._id){mUsers();return}
+ $('mgmt').innerHTML='<div class="panel empty">🔒 شاشة المستخدمين محمية — أدخلي كلمة مرورك للمتابعة.<div class="toolbar" style="justify-content:center;margin-top:12px"><button class="btn primary" onclick="usersGate()">🔑 إدخال كلمة المرور</button></div></div>';
+ $('modalTitle').textContent='تأكيد الهوية لفتح شاشة المستخدمين';
+ $('modalBody').innerHTML='<form id="ugForm" autocomplete="off"><div class="form-grid"><div class="field full"><label>كلمة مرورك الحالية</label><input type="password" id="ugPw" autocomplete="current-password"></div></div><div id="ugErr" class="mini" style="color:var(--danger);font-weight:700;margin-top:8px"></div><div class="modal-foot"><button class="btn primary">فتح</button><button type="button" class="btn" onclick="closeModal()">إلغاء</button></div></form>';
+ $('ugForm').onsubmit=e=>{e.preventDefault();if(!me||!pwOk(me,$('ugPw').value)){$('ugErr').textContent='كلمة المرور غير صحيحة';return}ui.usersOk=me._id;closeModal();mUsers()};
+ $('modal').classList.add('show');setTimeout(()=>{try{$('ugPw').focus()}catch(e){}},50);
+}
 function mUsers(){
  const rows=state.users.map(u=>[
   esc(u.name),esc(unameOf(u)),(u.ph?(u.mustChange?'🔑 مؤقتة (تُغيَّر عند أول دخول)':'🔒 مضبوطة'):'🔑 افتراضية = الكود (تُغيَّر عند أول دخول)'),esc(u.code),esc(u.type),
